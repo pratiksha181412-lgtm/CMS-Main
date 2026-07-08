@@ -1,52 +1,82 @@
 package tests;
 
-import base.BaseTest;
-import com.microsoft.playwright.options.LoadState;
+import base.AuthenticatedBaseTest;
 import org.testng.Assert;
-import org.testng.SkipException;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import pages.ClientPage;
-import pages.HomePage;
-import pages.LoginPage;
+import pages.DashboardPage;
+import pages.RolesPage;
 import utils.ConfigReader;
 
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class LoginTest extends BaseTest {
+public class LoginTest extends AuthenticatedBaseTest {
 
-    @BeforeMethod
-    public void resetToLoginPage() {
-        page.navigate(ConfigReader.getProperty("url"));
-        page.waitForLoadState(LoadState.NETWORKIDLE);
-    }
+    private static final String BASE_URL = ConfigReader.getProperty("url");
 
-    private void performLogin() {
-        LoginPage loginPage = new LoginPage(page);
-        loginPage.login(
-                ConfigReader.getProperty("email"),
-                ConfigReader.getProperty("otp"));
-
-        page.waitForLoadState();
-
-        HomePage homePage = new HomePage(page);
-        boolean loggedIn = homePage.isUserLoggedIn();
-
-        if (!loggedIn && !ConfigReader.getBoolean("requireSuccessfulLogin", false)) {
-            throw new SkipException(
-                    "Live CMS login did not complete. Check OTP/credentials. Current URL: "
-                            + homePage.getCurrentUrl());
-        }
-
-        Assert.assertTrue(loggedIn, "Login Failed. Current URL: " + homePage.getCurrentUrl());
-    }
-
-    private ClientPage navigateToAddClientForm() {
+    @Test(groups = "e2e")
+    public void verifyLoginOpenFormAndSaveClient() {
         ClientPage clientPage = new ClientPage(page);
-        clientPage.openAddClientForm(ConfigReader.getProperty("url"));
-        return clientPage;
+        clientPage.openAddClientForm(BASE_URL);
+
+        Assert.assertTrue(clientPage.isAddClientFormVisible(), "Add Client form was not displayed.");
+
+        String uniqueId = randomAlpha(10);
+        String clientName = "Auto Test Client " + uniqueId;
+        String userEmail = "autouser" + uniqueId + "@planetngtech.com";
+        String brandingUrl = "auto" + randomAlpha(8);
+
+        clientPage.fillMandatoryClientForm(
+                clientName,
+                ConfigReader.getProperty("client.description"),
+                ConfigReader.getProperty("client.officeAddress"),
+                ConfigReader.getProperty("client.country"),
+                ConfigReader.getProperty("client.timezone"),
+                ConfigReader.getProperty("client.pocName"),
+                ConfigReader.getProperty("client.pocEmail"),
+                ConfigReader.getProperty("client.pocMobile"),
+                brandingUrl,
+                ConfigReader.getProperty("client.licenses"),
+                ConfigReader.getProperty("client.startDate"),
+                ConfigReader.getProperty("client.endDate"),
+                testImagePath(),
+                testImagePath(),
+                ConfigReader.getProperty("client.firstName"),
+                ConfigReader.getProperty("client.lastName"),
+                userEmail,
+                ConfigReader.getProperty("client.userRole"));
+
+        clientPage.submitClientForm();
+
+        DashboardPage dashboardPage = new DashboardPage(page);
+        dashboardPage.waitForDashboard();
+        Assert.assertTrue(
+                dashboardPage.isDashboardVisible(),
+                "Expected dashboard (clients list) after save but was: " + page.url());
+
+        dashboardPage.openRoles();
+
+        RolesPage rolesPage = new RolesPage(page);
+        rolesPage.waitForRolesPage();
+        Assert.assertTrue(
+                rolesPage.isRolesPageVisible(),
+                "Roles page did not open. Current URL: " + page.url());
+
+        rolesPage.openAddRoleForm();
+        Assert.assertTrue(
+                rolesPage.isAddRoleFormVisible(),
+                "Add Role form was not displayed. Current URL: " + page.url());
+
+        rolesPage.fillAddRoleForm(
+                ConfigReader.getProperty("role.name"),
+                ConfigReader.getProperty("role.description"),
+                ConfigReader.getProperty("role.type"));
+
+        Assert.assertTrue(
+                rolesPage.areAllSection2CheckboxesSelected(),
+                "Not all Section 2 activity checkboxes were selected.");
     }
 
     private Path testImagePath() {
@@ -60,52 +90,14 @@ public class LoginTest extends BaseTest {
                 }
             }
         }
-        return Path.of("src/test/resources/test-logo.jpg");
+        return Path.of("src/test/resources/test-logo.png");
     }
 
-    @Test
-    public void verifyCMSLoginAndOpenAddClient() {
-        performLogin();
-
-        ClientPage clientPage = navigateToAddClientForm();
-        Assert.assertTrue(clientPage.isAddClientFormVisible(), "Add Client form was not displayed.");
-    }
-
-    @Test
-    public void verifyCreateClientEndToEnd() {
-        performLogin();
-
-        ClientPage clientPage = navigateToAddClientForm();
-        Assert.assertTrue(clientPage.isAddClientFormVisible(), "Add Client form was not displayed.");
-
-        String uniqueSuffix = String.valueOf(System.currentTimeMillis());
-        String clientName = ConfigReader.getProperty("client.name") + " " + uniqueSuffix;
-        String userEmail = "autouser" + uniqueSuffix + "@planetngtech.com";
-
-        clientPage.fillMandatoryClientForm(
-                clientName,
-                ConfigReader.getProperty("client.description"),
-                ConfigReader.getProperty("client.officeAddress"),
-                ConfigReader.getProperty("client.country"),
-                ConfigReader.getProperty("client.timezone"),
-                ConfigReader.getProperty("client.pocName"),
-                ConfigReader.getProperty("client.pocEmail"),
-                ConfigReader.getProperty("client.pocMobile"),
-                ConfigReader.getProperty("client.brandingUrl") + uniqueSuffix,
-                ConfigReader.getProperty("client.licenses"),
-                ConfigReader.getProperty("client.startDate"),
-                ConfigReader.getProperty("client.endDate"),
-                testImagePath(),
-                testImagePath(),
-                ConfigReader.getProperty("client.firstName"),
-                ConfigReader.getProperty("client.lastName"),
-                userEmail,
-                ConfigReader.getProperty("client.userRole"));
-
-        clientPage.submitClientForm();
-
-        Assert.assertTrue(
-                clientPage.isSaveSuccessful(),
-                "Client form was not saved. Expected redirect to clients/dashboard but was: " + page.url());
+    private static String randomAlpha(int length) {
+        StringBuilder sb = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            sb.append((char) ('a' + (int) (Math.random() * 26)));
+        }
+        return sb.toString();
     }
 }
